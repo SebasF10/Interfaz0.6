@@ -1,0 +1,207 @@
+# esto es un codigo que me dio la IA para compatibilisar con el dashboar, pero no se donde va y en "#form_panel_datos" no lo agrego asi que dejare esto aqui
+# para que plata vea como compatibilisarlo (o el que sea).
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { Clock, Users, GraduationCap, LogIn } from 'lucide-react';
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+
+const StatCard = ({ icon, title, value }) => (
+  <Card>
+    <CardContent className="flex items-center p-6">
+      {icon}
+      <div className="ml-4">
+        <p className="text-sm font-medium">{title}</p>
+        <h3 className="text-2xl font-bold">{value}</h3>
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const ChartCard = ({ title, chart }) => (
+  <Card>
+    <CardHeader>
+      <CardTitle>{title}</CardTitle>
+    </CardHeader>
+    <CardContent>
+      {chart}
+    </CardContent>
+  </Card>
+);
+
+const LastEntriesTable = ({ ingresos }) => (
+  <Card>
+    <CardHeader>
+      <CardTitle>Últimos Ingresos</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b">
+              <th className="p-2 text-left">ID</th>
+              <th className="p-2 text-left">Código</th>
+              <th className="p-2 text-left">Fecha</th>
+              <th className="p-2 text-left">Hora</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ingresos.map(ingreso => (
+              <tr key={ingreso.id_ingreso} className="border-b">
+                <td className="p-2">{ingreso.id_ingreso}</td>
+                <td className="p-2">{ingreso.codigo_est}</td>
+                <td className="p-2">{ingreso.fecha.split(' ')[0]}</td>
+                <td className="p-2">{ingreso.fecha.split(' ')[1]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const Dashboard = () => {
+  const [data, setData] = useState({
+    estudiantes: [],
+    ingresos: [],
+    usuarios: []
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [estudiantes, ingresos, usuarios] = await Promise.all([
+        fetch('/api/estudiantes').then(res => res.json()),
+        fetch('/api/ingresos').then(res => res.json()),
+        fetch('/api/usuarios').then(res => res.json())
+      ]);
+      
+      setData({ estudiantes, ingresos, usuarios });
+      setError(null);
+    } catch (err) {
+      setError('Error al cargar los datos');
+      console.error("Error fetching data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 300000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  const getEstudiantesPorGrupo = useCallback(() => {
+    const grupos = data.estudiantes.reduce((acc, est) => {
+      const grupo = `${est.grupo}-${est.jornada}`;
+      acc[grupo] = (acc[grupo] || 0) + 1;
+      return acc;
+    }, {});
+    
+    return Object.entries(grupos).map(([name, value]) => ({ name, value }));
+  }, [data.estudiantes]);
+
+  const getIngresosPorDia = useCallback(() => {
+    const ingresosPorDia = data.ingresos.reduce((acc, ingreso) => {
+      const fecha = ingreso.fecha.split(' ')[0];
+      acc[fecha] = (acc[fecha] || 0) + 1;
+      return acc;
+    }, {});
+    
+    return Object.entries(ingresosPorDia)
+      .map(([fecha, cantidad]) => ({ fecha, cantidad }))
+      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+  }, [data.ingresos]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-red-500">{error}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full p-6 space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <StatCard
+          icon={<GraduationCap className="w-8 h-8 text-blue-500" />}
+          title="Total Estudiantes"
+          value={data.estudiantes.length}
+        />
+        <StatCard
+          icon={<LogIn className="w-8 h-8 text-green-500" />}
+          title="Ingresos Hoy"
+          value={getIngresosPorDia().slice(-1)[0]?.cantidad || 0}
+        />
+        <StatCard
+          icon={<Users className="w-8 h-8 text-purple-500" />}
+          title="Total Usuarios"
+          value={data.usuarios.length}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <ChartCard
+          title="Estudiantes por Grupo"
+          chart={
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={getEstudiantesPorGrupo()}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  outerRadius={120}
+                  fill="#8884d8"
+                  dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
+                >
+                  {getEstudiantesPorGrupo().map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          }
+        />
+
+        <ChartCard
+          title="Ingresos por Día"
+          chart={
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={getIngresosPorDia()}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="fecha" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="cantidad" fill="#82ca9d" name="Cantidad de Ingresos" />
+              </BarChart>
+            </ResponsiveContainer>
+          }
+        />
+      </div>
+
+      <LastEntriesTable ingresos={data.ingresos.slice(0, 5)} />
+    </div>
+  );
+};
+
+export default Dashboard;
